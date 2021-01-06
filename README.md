@@ -11,12 +11,17 @@ https://github.com/corda/samples-kotlin/tree/master/Basic/cordapp-example
 ## How to run
 You will be able to start the nodes and issue IOU with PartyA through below steps
 
+
+Step 1) Run below commands to build and start the server.
+``
 ./gradlew deployNodes<br/>
 ./gradlew build<br/>
 ./build/nodes/runnodes<br/>
 ./gradlew runPartyAServer<br/>
-create a POST request to localhost:10050 with json body:<br/>
+``
 
+
+Step 2) Create a POST request to localhost:10050 with json body:<br/>
 ``
 {
 	"lender" : "O=PartyB, L=New York, C=US", 
