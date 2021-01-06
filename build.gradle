@@ -1,0 +1,174 @@
+buildscript {
+    ext {
+        kotlin_version = '1.2.50'
+        spring_version = '5.1.1.RELEASE'
+        spring_boot_version = '2.1.10.RELEASE'
+        spring_boot_gradle_plugin_version = '2.1.10.RELEASE'
+        spring_session_version = '1.3.3.RELEASE'
+        corda_release_version = '4.6'
+        corda_core_release_version = '4.6'
+        corda_platform_version = '4'
+        corda_version = '4.6'
+        corda_gradle_plugins_version = '5.0.12'
+        springfox_version = '2.8.0'
+        log4j_version = '2.11.2'
+        lmax_version = '3.4.2'
+        h2_version = '1.4.194'
+        guava_version = '21.0'
+        junit_version = '5.5.2'
+        kluent_version = '1.38'
+        flyway_version = '5.2.4'
+        postgres_version = '42.2.5'
+        // jackson_version = '2.9.9.1' // temporary override hamster's old value
+
+        // upgrades dom4j dep which has a vuln related to generating XML
+        hibernate_version = '5.3.7.Final'
+
+        jetty_version = '9.4.18.v20190429'
+
+        // this is required by corda subproject
+        quasar_version = '0.7.10'
+        slf4j_version = '1.7.25'
+    }
+
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        jcenter()
+        maven { url 'https://software.r3.com/artifactory/corda-releases' }
+        maven { url 'https://software.r3.com/artifactory/corda-dependencies' }
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "net.corda.plugins:cordapp:$corda_gradle_plugins_version"
+        classpath "net.corda.plugins:cordformation:$corda_gradle_plugins_version"
+        classpath "net.corda.plugins:quasar-utils:$corda_gradle_plugins_version"
+        classpath "org.springframework.boot:spring-boot-gradle-plugin:$spring_boot_gradle_plugin_version"
+        classpath "co.paralleluniverse:quasar-core:$quasar_version"
+    }
+}
+
+allprojects { //Properties that you need to compile your project (The application)
+    apply from: "${rootProject.projectDir}/repositories.gradle"
+    apply plugin: 'kotlin'
+
+    repositories {
+        mavenLocal()
+        jcenter()
+        mavenCentral()
+        maven { url 'https://software.r3.com/artifactory/corda' }
+        maven { url 'https://jitpack.io' }
+    }
+
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
+        kotlinOptions {
+            languageVersion = "1.2"
+            apiVersion = "1.2"
+            jvmTarget = "1.8"
+            javaParameters = true   // Useful for reflection.
+        }
+    }
+
+    jar {
+        // This makes the JAR's SHA-256 hash repeatable.
+        preserveFileTimestamps = false
+        reproducibleFileOrder = true
+    }
+}
+
+group 'io.cryptoblk.sample'
+version '1.0-SNAPSHOT'
+
+apply plugin: "java"
+apply plugin: 'kotlin'
+apply plugin: 'net.corda.plugins.cordapp'
+apply plugin: 'net.corda.plugins.cordformation'
+apply plugin: 'net.corda.plugins.quasar-utils'
+apply plugin: 'org.springframework.boot'
+
+dependencies {
+    compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    // Corda dependencies.
+    cordaCompile "net.corda:corda-core:$corda_core_release_version"
+    cordaRuntime "net.corda:corda-node-api:$corda_release_version"
+    cordaRuntime "net.corda:corda:$corda_release_version"
+    compile "net.corda:corda-rpc:$corda_release_version"
+    compile "net.corda:corda-jackson:$corda_release_version"
+
+    compile("org.springframework.boot:spring-boot-starter-websocket:$spring_boot_version") {
+        exclude group: "org.springframework.boot", module: "spring-boot-starter-logging"
+    }
+
+    cordapp project(":iou-cordapp")
+
+    cordaCompile "org.apache.logging.log4j:log4j-slf4j-impl:${log4j_version}"
+    cordaCompile "org.apache.logging.log4j:log4j-web:${log4j_version}"
+    cordaCompile "org.slf4j:jul-to-slf4j:$slf4j_version"
+}
+
+springBoot {
+    mainClassName = "io.cryptoblk.sample.Server"
+}
+
+compileKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
+compileTestKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
+
+//Task to deploy the nodes in order to bootstrap a network
+task deployNodes(type: net.corda.plugins.Cordform, dependsOn: ['jar']) {
+
+    /* This property will load the CorDapps to each of the node by default, including the Notary. You can find them
+     * in the cordapps folder of the node at build/nodes/Notary/cordapps. However, the notary doesn't really understand
+     * the notion of cordapps. In production, Notary does not need cordapps as well. This is just a short cut to load
+     * the Corda network bootstrapper.
+     */
+    nodeDefaults {
+        projectCordapp {
+            deploy = false
+        }
+        cordapp project(':iou-cordapp')
+        runSchemaMigration = true //This configuration is for any CorDapps with custom schema, We will leave this as true to avoid
+        //problems for developers who are not familiar with Corda. If you are not using custom schemas, you can change
+        //it to false for quicker project compiling time.
+    }
+    node {
+        name "O=Notary,L=London,C=GB"
+        notary = [validating : false]
+        p2pPort 10002
+        rpcSettings {
+            address("localhost:10003")
+            adminAddress("localhost:10043")
+        }
+    }
+    node {
+        name "O=PartyA,L=London,C=GB"
+        p2pPort 10005
+        rpcSettings {
+            address("localhost:10006")
+            adminAddress("localhost:10046")
+        }
+        rpcUsers = [[ user: "user1", "password": "test", "permissions": ["ALL"]]]
+    }
+    node {
+        name "O=PartyB,L=New York,C=US"
+        p2pPort 10008
+        rpcSettings {
+            address("localhost:10009")
+            adminAddress("localhost:10049")
+        }
+        rpcUsers = [[ user: "user1", "password": "test", "permissions": ["ALL"]]]
+    }
+
+}
+
+/* This task will start the springboot server that connects to your node (via RPC connection). All of the http requests
+ * are in the Controller file. You can leave the Server.kt and NodeRPCConnection.kt file untouched for your use.
+ */
+task runPartyAServer(type: JavaExec, dependsOn: assemble) {
+    classpath = sourceSets.main.runtimeClasspath
+    main = 'io.cryptoblk.sample.Server'
+    args '--server.port=10050', '--config.rpc.host=localhost', '--config.rpc.port=10006', '--config.rpc.username=user1', '--config.rpc.password=test'
+}
