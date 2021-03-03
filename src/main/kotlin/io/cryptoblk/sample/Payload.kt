@@ -5,3 +5,8 @@ data class Payload (
     val value : Int
     ){
 }
+
+data class UpdatePayload(
+    val ref: String,
+    val value : Int
+)

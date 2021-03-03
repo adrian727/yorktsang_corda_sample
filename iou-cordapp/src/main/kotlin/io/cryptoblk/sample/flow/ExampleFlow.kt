@@ -25,7 +25,8 @@ import net.corda.core.utilities.ProgressTracker.Step
  *
  * All methods called within the [FlowLogic] sub-class need to be annotated with the @Suspendable annotation.
  */
-object ExampleFlow {
+object
+ExampleFlow {
     @InitiatingFlow
     @StartableByRPC
     class Initiator(val iouValue: Int,

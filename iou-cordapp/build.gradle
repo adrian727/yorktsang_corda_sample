@@ -33,4 +33,14 @@ cordapp {
         licence "Apache License, Version 2.0"
         versionId 1
     }
+    signing{
+        enabled true
+        options {
+            keystore "$projectDir/../cert/jar-sign-keystore2.pkcs12"
+            alias "awesome-cordapp-signer"
+            storepass "password"
+            keypass "password"
+            storetype "PKCS12"
+        }
+    }
 }

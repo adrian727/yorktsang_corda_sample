@@ -7,7 +7,8 @@ import net.corda.core.identity.CordaX500Name
 import net.corda.core.messaging.startTrackedFlow
 import net.corda.core.messaging.vaultQueryBy
 import net.corda.core.utilities.getOrThrow
-import io.cryptoblk.sample.flow.ExampleFlow.Initiator
+import io.cryptoblk.sample.flow.ExampleFlow
+import io.cryptoblk.sample.flow.ModifyFlow
 import io.cryptoblk.sample.state.IOUState
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Bean
@@ -17,6 +18,9 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import javax.servlet.http.HttpServletRequest
 import net.corda.client.jackson.JacksonSupport
+import net.corda.core.contracts.StateRef
+import net.corda.core.crypto.SecureHash
+import net.corda.core.node.services.KeyManagementService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.web.bind.annotation.*
@@ -82,7 +86,28 @@ class Controller(rpc: NodeRPCConnection) {
         val partyX500Name = CordaX500Name.parse(obj.lender)
         val otherParty = proxy.wellKnownPartyFromX500Name(partyX500Name) ?: return ResponseEntity.badRequest().body("Party named ${obj.lender} cannot be found.\n")
         return try {
-            val signedTx = proxy.startTrackedFlow(::Initiator, obj.value, otherParty).returnValue.getOrThrow()
+            val signedTx = proxy.startTrackedFlow(ExampleFlow::Initiator, obj.value, otherParty).returnValue.getOrThrow()
+            ResponseEntity.status(HttpStatus.CREATED).body("Transaction id ${signedTx.id} committed to ledger.\n")
+
+        } catch (ex: Throwable) {
+            logger.error(ex.message, ex)
+            ResponseEntity.badRequest().body(ex.message!!)
+        }
+
+    }
+
+    @PostMapping(value = ["update"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun updateIOU(@RequestBody obj:UpdatePayload): ResponseEntity<String> {
+        val ref = obj.ref
+        val iouValue = obj.value
+
+        if (iouValue <= 0 ) {
+            return ResponseEntity.badRequest().body("Query parameter 'iouValue' must be non-negative.\n")
+        }
+        val stateRef = parseString(ref)
+
+        return try {
+            val signedTx = proxy.startTrackedFlow(ModifyFlow::Initiator, stateRef, iouValue).returnValue.getOrThrow()
             ResponseEntity.status(HttpStatus.CREATED).body("Transaction id ${signedTx.id} committed to ledger.\n")
 
         } catch (ex: Throwable) {
@@ -90,6 +115,8 @@ class Controller(rpc: NodeRPCConnection) {
             ResponseEntity.badRequest().body(ex.message!!)
         }
     }
+
+
 
     /**
      * Initiates a flow to agree an IOU between two parties.
@@ -117,7 +144,27 @@ class Controller(rpc: NodeRPCConnection) {
         val otherParty = proxy.wellKnownPartyFromX500Name(partyX500Name) ?: return ResponseEntity.badRequest().body("Party named $partyName cannot be found.\n")
 
         return try {
-            val signedTx = proxy.startTrackedFlow(::Initiator, iouValue, otherParty).returnValue.getOrThrow()
+            val signedTx = proxy.startTrackedFlow(ExampleFlow::Initiator, iouValue, otherParty).returnValue.getOrThrow()
+            ResponseEntity.status(HttpStatus.CREATED).body("Transaction id ${signedTx.id} committed to ledger.\n")
+
+        } catch (ex: Throwable) {
+            logger.error(ex.message, ex)
+            ResponseEntity.badRequest().body(ex.message!!)
+        }
+    }
+
+    @PostMapping(value = ["update-iou"], produces = [MediaType.TEXT_PLAIN_VALUE], headers = ["Content-Type=application/x-www-form-urlencoded"])
+    fun updateIOU(request: HttpServletRequest): ResponseEntity<String> {
+        val ref = request.getParameter("ref").toString()
+        val iouValue = request.getParameter("iouValue").toInt()
+
+        if (iouValue <= 0 ) {
+            return ResponseEntity.badRequest().body("Query parameter 'iouValue' must be non-negative.\n")
+        }
+        val stateRef = parseString(ref)
+
+        return try {
+            val signedTx = proxy.startTrackedFlow(ModifyFlow::Initiator, stateRef, iouValue).returnValue.getOrThrow()
             ResponseEntity.status(HttpStatus.CREATED).body("Transaction id ${signedTx.id} committed to ledger.\n")
 
         } catch (ex: Throwable) {
@@ -133,5 +180,17 @@ class Controller(rpc: NodeRPCConnection) {
     fun getMyIOUs(): ResponseEntity<List<StateAndRef<IOUState>>> {
         val myious = proxy.vaultQueryBy<IOUState>().states.filter { it.state.data.lender.equals(proxy.nodeInfo().legalIdentities.first()) }
         return ResponseEntity.ok(myious)
+    }
+
+    fun parseString(str: String): StateRef {
+        val parts = str.split('(', ')')
+        return when (parts.size) {
+            3 -> {
+                require(parts[2].isEmpty())
+                StateRef(SecureHash.parse(parts[0]), parts[1].toInt())
+            }
+            1 -> StateRef(SecureHash.parse(parts[0]), 0)
+            else -> throw IllegalArgumentException()
+        }
     }
 }
